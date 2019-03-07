@@ -262,6 +262,7 @@ AdversaryModel = Model(inputs=[inputs, LabelWeights],
                        outputs=AdversaryC
                        )
 
+
 def Make_loss_A(lam):
     def loss(y_true, y_pred):
         y_pred, l_true = y_pred[:, :-1], y_pred[:, -1]  # prediction and label
@@ -270,6 +271,10 @@ def Make_loss_A(lam):
                             axis=-1)
     return loss
 
+
+AdversaryModel.compile(loss=Make_loss_A(1.0),
+                       optimizer=Adam()
+                       )
 
 # ***************************************************
 # Let the adversary learn for a while
@@ -284,7 +289,7 @@ if not os.path.isfile('Models/OriginalAdversaryReluAdam.h5'):
                        y=mbin_train_labels,
                        validation_data=[[X_valscaled, y_val],
                                         mbin_validate_labels],
-                       epochs=50,
+                       epochs=100,
                        callbacks=[reduce_lr, es]
                        )
 
@@ -303,9 +308,9 @@ if not os.path.isfile('Models/OriginalAdversaryReluAdam.h5'):
     plt.close()
     plt.clf()
 
-    AdversaryModel.save('Models/OriginalAdversaryReluAdam.h5')
+    AdversaryModel.save_weights('Models/OriginalAdversaryReluAdam.h5')
 else:
-    AdversaryModel = load_model('Models/OriginalAdversaryReluAdam.h5')
+    AdversaryModel.load_weights('Models/OriginalAdversaryReluAdam.h5')
 
 # ***************************************************
 # Now put the two models together into one model
@@ -349,7 +354,7 @@ def plot_losses(i, losses):
                )
     plt.xlabel('Mass (scaled)')
     plt.ylabel('Predicted')
-    plt.savefig('Plots/Adversary_lambda_{0}_step_{1}.pdf'.format(i, lam),
+    plt.savefig('Plots/Adversary_lambda_{0}_step_{1}.pdf'.format(lam, i),
                 bbox_inches='tight'
                 )
     plt.close()
@@ -361,38 +366,46 @@ batch_size = 512
 
 ClassOpt = SGD(lr=1e-3, momentum=0.5, decay=1e-5)
 AdvOpt = SGD(lr=1e-2, momentum=0.5, decay=1e-5)
+CombinedModel.compile(loss=['binary_crossentropy',
+                            Make_loss_A(-lam)],
+                      optimizer=ClassOpt
+                      )
 
 for i in range(200):
-    l = CombinedModel.evaluate([X_val, y_val],
-                               [y_val, mbin_validate_labels],
-                               verbose=0)
+    m_losses = CombinedModel.evaluate([X_val, y_val],
+                                      [y_val, mbin_validate_labels],
+                                      verbose=0
+                                      )
 
-    losses["L_C - L_A"].append(l[0][None][0])
-    losses["L_C"].append(l[1][None][0])
-    losses["L_A"].append(-l[2][None][0])
+    losses["L_C - L_A"].append(m_losses[0][None][0])
+    losses["L_C"].append(m_losses[1][None][0])
+    losses["L_A"].append(-m_losses[2][None][0])
     print(losses["L_A"][-1] / lam)
 
     # if i % 5 == 0:
     plot_losses(i, losses)
 
     # Fit Classifier
-    ClassifierModel.trainable = True
     AdversaryModel.trainable = False
-    for j in xrange(5):
+    ClassifierModel.trainable = True
+    for j in range(5):
         indices = np.random.permutation(len(X_trainscaled))[:batch_size]
         CombinedModel.compile(loss=['binary_crossentropy',
                                     Make_loss_A(-lam)],
                               optimizer=ClassOpt
                               )
-        CombinedModel.fit([X_trainscaled[indices], y_train[indices]],
-                          [y_train[indices], mbin_train_labels[indices]],
-                          batch_size=batch_size,
-                          epochs=5
-                          )
+        CombinedModel.train_on_batch(x=[X_trainscaled[indices],
+                                        y_train[indices]
+                                        ],
+                                     y=[y_train[indices],
+                                        mbin_train_labels[indices]
+                                        ],
+                                     class_weight=class_weights
+                                     )
 
     # Fit Adversary
-    ClassifierModel.trainable = False
     AdversaryModel.trainable = True
+    ClassifierModel.trainable = False
     AdversaryModel.compile(loss=Make_loss_A(1.0),
                            optimizer=AdvOpt
                            )
