@@ -25,6 +25,9 @@ from keras.layers import Dense, Input, Concatenate, concatenate
 from keras.optimizers import Adam, SGD, RMSprop
 from keras.callbacks import ModelCheckpoint, EarlyStopping, ReduceLROnPlateau
 
+from tensorflow.python.client import device_lib
+print(device_lib.list_local_devices())
+
 plt.rcParams.update({'font.family': 'cmr10',
                      'font.size': 12})
 matplotlib.rcParams['axes.unicode_minus'] = False
@@ -145,7 +148,7 @@ ClassifierModel = Model(inputs=inputs, outputs=Classifier)
 # Train the Classifier
 # No adversary, just do as good as possible
 # ***************************************************
-if not os.path.isfile('OriginalClassifer.h5'):
+if not os.path.isfile('Models/OriginalClassifer.h5'):
     ClassifierModel.compile(optimizer='adam', loss='binary_crossentropy')
     ClassifierModel.summary()
     ClassifierModel.fit(X_trainscaled,
@@ -236,9 +239,9 @@ if not os.path.isfile('OriginalClassifer.h5'):
     plt.tight_layout(w_pad=2)
     plt.savefig('Plots/InitialNetworkNoAdversary.pdf', bbox_inches='tight')
 
-    ClassifierModel.save('OriginalClassifer.h5')
+    ClassifierModel.save('Models/OriginalClassifer.h5')
 else:
-    ClassifierModel = load_model('OriginalClassifer.h5')
+    ClassifierModel = load_model('Models/OriginalClassifer.h5')
 
 # ***************************************************
 # Add in the Adversary
@@ -259,7 +262,6 @@ AdversaryModel = Model(inputs=[inputs, LabelWeights],
                        outputs=AdversaryC
                        )
 
-
 def Make_loss_A(lam):
     def loss(y_true, y_pred):
         y_pred, l_true = y_pred[:, :-1], y_pred[:, -1]  # prediction and label
@@ -272,32 +274,40 @@ def Make_loss_A(lam):
 # ***************************************************
 # Let the adversary learn for a while
 # ***************************************************
-ClassifierModel.trainable = False
-AdversaryModel.compile(loss=Make_loss_A(1.0),
-                       optimizer=Adam()
+if not os.path.isfile('Models/OriginalAdversaryReluAdam.h5'):
+    ClassifierModel.trainable = False
+    AdversaryModel.compile(loss=Make_loss_A(1.0),
+                           optimizer=Adam()
+                           )
+    AdversaryModel.summary()
+    AdversaryModel.fit(x=[X_trainscaled, y_train],
+                       y=mbin_train_labels,
+                       validation_data=[[X_valscaled, y_val],
+                                        mbin_validate_labels],
+                       epochs=50,
+                       callbacks=[reduce_lr, es]
                        )
-AdversaryModel.summary()
-AdversaryModel.fit(x=[X_trainscaled, y_train],
-                   y=mbin_train_labels,
-                   validation_data=[[X_valscaled, y_val],
-                                    mbin_validate_labels],
-                   epochs=50,
-                   callbacks=[reduce_lr, es]
-                   )
 
-validationpreds = (AdversaryModel.predict([X_valscaled, y_val]))
-plt.figure(figsize=(4, 4))
-plt.hist2d(mbin_validate[(y_val == 0).flatten()],
-           np.argmax(validationpreds[(y_val == 0).flatten(), :100], axis=1),
-           bins=(range(0, 11), range(0, 11)),
-           norm=LogNorm()
-           )
-plt.xlabel('Mass (scaled)')
-plt.ylabel('Predicted')
-plt.savefig('Plots/InitialAdversaryOnValidation.pdf',
-            bbox_inches='tight'
-            )
+    validationpreds = (AdversaryModel.predict([X_valscaled, y_val]))
+    plt.figure(figsize=(4, 4))
+    plt.hist2d(mbin_validate[(y_val == 0).flatten()],
+               np.argmax(validationpreds[(y_val == 0).flatten(), :100], axis=1),
+               bins=(range(0, 11), range(0, 11)),
+               norm=LogNorm()
+               )
+    plt.xlabel('Mass (scaled)')
+    plt.ylabel('Predicted')
+    plt.savefig('Plots/InitialAdversaryOnValidation.pdf',
+                bbox_inches='tight'
+                )
+    plt.close()
+    plt.clf()
 
+    AdversaryModel.save('Models/OriginalAdversaryReluAdam.h5')
+else:
+    AdversaryModel = load_model('Models/OriginalAdversaryReluAdam.h5')
+
+# ***************************************************
 # Now put the two models together into one model
 # With two output, there will need to be two losses
 CombinedModel = Model(inputs=[inputs, LabelWeights],
@@ -305,3 +315,174 @@ CombinedModel = Model(inputs=[inputs, LabelWeights],
                                AdversaryModel([inputs, LabelWeights])
                                ]
                       )
+
+losses = {"L_C": [], "L_A": [], "L_C - L_A": []}
+
+
+def plot_losses(i, losses):
+    ax1 = plt.subplot(311)
+    values = np.array(losses["L_C"])
+    plt.plot(range(len(values)), values, label=r"$L_C$", color="blue")
+    plt.legend(loc="upper right")
+
+    ax2 = plt.subplot(312, sharex=ax1)
+    values = np.array(losses["L_A"]) / lam
+    plt.plot(range(len(values)), values, label=r"$L_A$", color="green")
+    plt.legend(loc="upper right")
+
+    ax3 = plt.subplot(313, sharex=ax1)
+    values = np.array(losses["L_C - L_A"])
+    plt.plot(range(len(values)), values, label=r"$L_C - \lambda L_A$", color="red")
+    plt.legend(loc="upper right")
+
+    plt.tight_layout()
+    plt.savefig('Plots/TrainingWithLambda100.pdf', bbox_inches='tight')
+    plt.close()
+    plt.clf()
+
+    validationpreds = (AdversaryModel.predict([X_valscaled, y_val]))
+    plt.figure(figsize=(4, 4))
+    plt.hist2d(mbin_validate[(y_val == 0).flatten()],
+               np.argmax(validationpreds[(y_val == 0).flatten(), :100], axis=1),
+               bins=(range(0, 11), range(0, 11)),
+               norm=LogNorm()
+               )
+    plt.xlabel('Mass (scaled)')
+    plt.ylabel('Predicted')
+    plt.savefig('Plots/Adversary_lambda_{0}_step_{1}.pdf'.format(i, lam),
+                bbox_inches='tight'
+                )
+    plt.close()
+    plt.clf()
+
+
+lam = 100.0
+batch_size = 512
+
+ClassOpt = SGD(lr=1e-3, momentum=0.5, decay=1e-5)
+AdvOpt = SGD(lr=1e-2, momentum=0.5, decay=1e-5)
+
+for i in range(200):
+    l = CombinedModel.evaluate([X_val, y_val],
+                               [y_val, mbin_validate_labels],
+                               verbose=0)
+
+    losses["L_C - L_A"].append(l[0][None][0])
+    losses["L_C"].append(l[1][None][0])
+    losses["L_A"].append(-l[2][None][0])
+    print(losses["L_A"][-1] / lam)
+
+    # if i % 5 == 0:
+    plot_losses(i, losses)
+
+    # Fit Classifier
+    ClassifierModel.trainable = True
+    AdversaryModel.trainable = False
+    for j in xrange(5):
+        indices = np.random.permutation(len(X_trainscaled))[:batch_size]
+        CombinedModel.compile(loss=['binary_crossentropy',
+                                    Make_loss_A(-lam)],
+                              optimizer=ClassOpt
+                              )
+        CombinedModel.fit([X_trainscaled[indices], y_train[indices]],
+                          [y_train[indices], mbin_train_labels[indices]],
+                          batch_size=batch_size,
+                          epochs=5
+                          )
+
+    # Fit Adversary
+    ClassifierModel.trainable = False
+    AdversaryModel.trainable = True
+    AdversaryModel.compile(loss=Make_loss_A(1.0),
+                           optimizer=AdvOpt
+                           )
+    for j in range(200):
+        indices = np.random.permutation(len(X_trainscaled))
+        AdversaryModel.train_on_batch(x=[X_trainscaled[indices],
+                                         y_train[indices]],
+                                      y=mbin_train_labels[indices]
+                                      )
+
+# *********************************************************
+# Results after the adversarial training
+# *********************************************************
+FinalPreds = ClassifierModel.predict(X_testscaled)
+fpr_O, tpr_O, thresholds_O = roc_curve(y_test, FinalPreds)
+auc_O = auc(fpr_O, tpr_O)
+i50 = np.argmin(np.abs(tpr_O - 0.5))
+i60 = np.argmin(np.abs(tpr_O - 0.6))
+i70 = np.argmin(np.abs(tpr_O - 0.7))
+i80 = np.argmin(np.abs(tpr_O - 0.8))
+i90 = np.argmin(np.abs(tpr_O - 0.9))
+
+fp50, tp50, thr50 = fpr_O[i50], tpr_O[i50], thresholds_O[i50]
+fp60, tp60, thr60 = fpr_O[i60], tpr_O[i60], thresholds_O[i60]
+fp70, tp70, thr70 = fpr_O[i70], tpr_O[i70], thresholds_O[i70]
+fp80, tp80, thr80 = fpr_O[i80], tpr_O[i80], thresholds_O[i80]
+fp90, tp90, thr90 = fpr_O[i90], tpr_O[i90], thresholds_O[i90]
+
+plt.figure(figsize=(9, 3))
+
+plt.subplot(1, 3, 1)
+plt.hist(FinalPreds[y_test == 0], histtype='step',
+         bins=50, color='k'
+         )
+plt.hist(FinalPreds[y_test == 1], histtype='step',
+         bins=50, color='C0'
+         )
+plt.plot([], [], color='k', label='Backgrounds')
+plt.plot([], [], color='C0', label='Signals')
+plt.vlines([thr50, thr60, thr70, thr80, thr90],
+           ymin=1e-1, ymax=1e3,
+           colors=['C5', 'C4', 'C3', 'C2', 'C1']
+           )
+plt.yscale('log')
+plt.legend(loc='upper left', frameon=False, fontsize=10)
+plt.xlabel('Network output')
+plt.ylabel('Events per bin')
+plt.ylim(1e-1, 1e5)
+
+plt.subplot(1, 3, 2)
+plt.plot(fpr_O, tpr_O, label='early stopping: {0:.2f}'.format(auc_O))
+plt.scatter(fp50, tp50, color='C5')
+plt.scatter(fp60, tp60, color='C4')
+plt.scatter(fp70, tp70, color='C3')
+plt.scatter(fp80, tp80, color='C2')
+plt.scatter(fp90, tp90, color='C1')
+plt.xlabel('False positve rate')
+plt.ylabel('True positive rate')
+plt.legend(loc='lower right', frameon=False, fontsize=10)
+plt.xscale('log')
+
+plt.subplot(1, 3, 3)
+back_i = (y_test == 0).flatten()
+plt.hist(mass_test[back_i],
+         bins=50, range=(50, 400),
+         histtype='step', color='k')
+plt.hist(mass_test[back_i & (FinalPreds.flatten() > thr50)],
+         bins=50, range=(50, 400),
+         histtype='step', color='C5')
+plt.hist(mass_test[back_i & (FinalPreds.flatten() > thr60)],
+         bins=50, range=(50, 400),
+         histtype='step', color='C4')
+plt.hist(mass_test[back_i & (FinalPreds.flatten() > thr70)],
+         bins=50, range=(50, 400),
+         histtype='step', color='C3')
+plt.hist(mass_test[back_i & (FinalPreds.flatten() > thr80)],
+         bins=50, range=(50, 400),
+         histtype='step', color='C2')
+plt.hist(mass_test[back_i & (FinalPreds.flatten() > thr90)],
+         bins=50, range=(50, 400),
+         histtype='step', color='C1')
+plt.hist(mass_test[(y_test == 1).flatten()].flatten(),
+         weights=np.ones(np.sum(y_test == 1)) * 0.15,
+         bins=50, range=(50, 400),
+         color='C0', alpha=0.2)
+plt.yscale('log')
+plt.xlabel(r'$m_j$ [GeV]')
+plt.ylabel('Events per bin')
+
+plt.suptitle('No Adversary', y=1.02)
+plt.tight_layout(w_pad=2)
+plt.savefig('Plots/Adversary_lam_{0}_final.pdf'.format(lam),
+            bbox_inches='tight')
