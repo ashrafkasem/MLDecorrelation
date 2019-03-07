@@ -285,9 +285,9 @@ AdversaryModel = Model(inputs=[inputs, LabelWeights],
 def Make_loss_A(lam):
     def loss(y_true, y_pred):
         y_pred, l_true = y_pred[:, :-1], y_pred[:, -1]  # prediction and label
-        return lam * K.mean(K.categorical_crossentropy(y_true, y_pred) *
-                            (1.0 - l_true),  # 0 for signal and 1 for background
-                            axis=-1)
+        return lam * K.dot(K.categorical_crossentropy(y_true, y_pred),
+                           (1.0 - l_true)
+                           ) / y_pred.shape[0]
     return loss
 
 
