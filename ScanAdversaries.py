@@ -274,7 +274,8 @@ def Make_loss_A(lam):
 # ***************************************************
 ClassifierModel.trainable = False
 AdversaryModel.compile(loss=Make_loss_A(1.0),
-                       optimizer=SGD(momentum=0.5, lr=1, decay=1e-5))
+                       optimizer=Adam()
+                       )
 AdversaryModel.summary()
 AdversaryModel.fit(x=[X_trainscaled, y_train],
                    y=mbin_train_labels,
@@ -283,6 +284,19 @@ AdversaryModel.fit(x=[X_trainscaled, y_train],
                    epochs=50,
                    callbacks=[reduce_lr, es]
                    )
+
+validationpreds = (AdversaryModel.predict([X_valscaled, y_val]))
+plt.figure(figsize=(4, 4))
+plt.hist2d(mbin_validate[(y_val == 0).flatten()],
+           np.argmax(validationpreds[(y_val == 0).flatten(), :100], axis=1),
+           bins=(range(0, 11), range(0, 11)),
+           norm=LogNorm()
+           )
+plt.xlabel('Mass (scaled)')
+plt.ylabel('Predicted')
+plt.savefig('Plots/InitialAdversaryOnValidation.pdf',
+            bbox_inches='tight'
+            )
 
 # Now put the two models together into one model
 # With two output, there will need to be two losses
