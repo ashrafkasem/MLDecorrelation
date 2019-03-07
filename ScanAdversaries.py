@@ -245,7 +245,7 @@ else:
 # Now the adversary uses the whole input, but only takes the output of the classifier
 # ***************************************************
 Adversary = ClassifierModel(inputs)
-Adversary = Dense(50, activation='tanh')(Adversary)
+Adversary = Dense(50, activation='relu')(Adversary)
 Adversary = Dense(10, activation='softmax')(Adversary)
 # Adversary = K.tf.nn.softmax(Adversary)
 
