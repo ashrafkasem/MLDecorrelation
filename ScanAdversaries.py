@@ -383,7 +383,6 @@ def plot_losses(i, losses):
     plt.clf()
 
 
-lam = 100.0
 batch_size = 512
 
 ClassOpt = SGD(lr=1e-3, momentum=0.5, decay=1e-5)
