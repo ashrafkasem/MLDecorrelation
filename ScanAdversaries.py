@@ -4,7 +4,7 @@ matplotlib.use('Agg')
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import os.path
+import os
 import sys
 import matplotlib.gridspec as gridspec
 from matplotlib.colors import LogNorm
@@ -41,6 +41,24 @@ plt.rcParams['ytick.direction'] = 'in'
 plt.rcParams['xtick.top'] = True
 plt.rcParams['ytick.right'] = True
 
+if len(sys.argv) != 2:
+    sys.exit('Need to provide run number')
+else:
+    runnum = int(sys.argv[1])
+
+rundict = {
+    0: 1,
+    1: 2,
+    2: 5,
+    3: 10,
+    4: 20,
+    5: 50,
+    6: 100,
+    1: 200,
+    8: 500,
+    9: 1000
+}
+lam = rundict[runnum]
 
 # ********** Load data *******************************
 SignalDF = pd.read_csv('data/data_sig.txt',
@@ -325,6 +343,8 @@ losses = {"L_C": [], "L_A": [], "L_C - L_A": []}
 
 
 def plot_losses(i, losses):
+    if not os.path.isdir('Plots/Lambda_{0}/'.format(lam)):
+        os.mkdir('Plots/Lambda_{0}'.format(lam))
     ax1 = plt.subplot(311)
     values = np.array(losses["L_C"])
     plt.plot(range(len(values)), values, label=r"$L_C$", color="blue")
@@ -341,7 +361,8 @@ def plot_losses(i, losses):
     plt.legend(loc="upper right")
 
     plt.tight_layout()
-    plt.savefig('Plots/TrainingWithLambda100.pdf', bbox_inches='tight')
+    plt.savefig('Plots/Lambda_{0}/TrainingWithLambda_{0}.pdf'.format(lam),
+                bbox_inches='tight')
     plt.close()
     plt.clf()
 
@@ -354,7 +375,7 @@ def plot_losses(i, losses):
                )
     plt.xlabel('Mass (scaled)')
     plt.ylabel('Predicted')
-    plt.savefig('Plots/Adversary_lambda_{0}_step_{1}.pdf'.format(lam, i),
+    plt.savefig('Plots/Lambda_{0}/Adversary_lambda_{0}_step_{1}.png'.format(lam, i),
                 bbox_inches='tight'
                 )
     plt.close()
