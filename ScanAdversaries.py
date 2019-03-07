@@ -59,6 +59,7 @@ rundict = {
     9: 1000
 }
 lam = rundict[runnum]
+print('Using {0} for the lagrange multiplier of the adversary'.format(lam))
 
 # ********** Load data *******************************
 SignalDF = pd.read_csv('data/data_sig.txt',
@@ -520,3 +521,7 @@ plt.suptitle('No Adversary', y=1.02)
 plt.tight_layout(w_pad=2)
 plt.savefig('Plots/Adversary_lam_{0}_final.pdf'.format(lam),
             bbox_inches='tight')
+
+AdversaryModel.save_weights('Models/Adv_lam_{0}_final.h5'.format(lam))
+ClassifierModel.save('Models/Class_lam_{0}_final.h5'.format(lam))
+ClassifierModel.save_weights('Models/Class_lam_{0}_final_weights.h5'.format(lam))
