@@ -9,6 +9,7 @@ import sys
 import matplotlib.gridspec as gridspec
 from matplotlib.colors import LogNorm
 import matplotlib.colors as colors
+from subprocess import call
 
 from sklearn import metrics
 from sklearn.metrics import mean_squared_error, roc_curve, auc
@@ -54,9 +55,12 @@ rundict = {
     4: 20,
     5: 50,
     6: 100,
-    1: 200,
+    7: 200,
     8: 500,
-    9: 1000
+    9: 1000,
+    10: 2000,
+    11: 5000,
+    12: 10000
 }
 lam = rundict[runnum]
 print('Using {0} for the lagrange multiplier of the adversary'.format(lam))
@@ -287,8 +291,8 @@ def Make_loss_A(lam):
         y_pred, l_true = y_pred[:, :-1], y_pred[:, -1]  # prediction and label
 
         return (lam *
-                K.categorical_crossentropy(y_true, y_pred) *
-                (1 - l_true)) / K.sum(1 - l_true)
+                K.categorical_crossentropy(y_true, y_pred) * (1 - l_true)
+                ) / K.sum(1 - l_true)
     return loss
 
 
@@ -376,7 +380,7 @@ def plot_losses(i, losses):
                )
     plt.xlabel('Mass (scaled)')
     plt.ylabel('Predicted')
-    plt.savefig('Plots/Lambda_{0}/Adversary_lambda_{0}_step_{1}.png'.format(lam, i),
+    plt.savefig('Plots/Lambda_{0}/Adversary_lambda_{0}_step_{1:03d}.png'.format(lam, i),
                 bbox_inches='tight'
                 )
     plt.close()
@@ -393,7 +397,7 @@ CombinedModel.compile(loss=['binary_crossentropy',
                       )
 
 for i in range(200):
-    m_losses = CombinedModel.evaluate([X_val, y_val],
+    m_losses = CombinedModel.evaluate([X_valscaled, y_val],
                                       [y_val, mbin_validate_labels],
                                       verbose=0
                                       )
@@ -524,3 +528,10 @@ plt.savefig('Plots/Adversary_lam_{0}_final.pdf'.format(lam),
 AdversaryModel.save_weights('Models/Adv_lam_{0}_final.h5'.format(lam))
 ClassifierModel.save('Models/Class_lam_{0}_final.h5'.format(lam))
 ClassifierModel.save_weights('Models/Class_lam_{0}_final_weights.h5'.format(lam))
+
+script = ' ./ffmpeg -framerate 10 -i '
+script += '/projects/het/bostdiek/Decorellation/Plots/Lambda_{0}/'.format(lam)
+script += 'Adversary_lambda_{0}_step_%03d.png -pix_fmt yuv420p '.format(lam)
+script += '/projects/het/bostdiek/Decorellation/Plots/Lambda_{0}/Adv.mp4'.format(lam)
+
+call(script, shell=True, cwd='/projects/het/bostdiek/Tools/FFMPEG/ffmpeg')
