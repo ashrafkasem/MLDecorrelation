@@ -295,8 +295,10 @@ def Make_loss_A(lam):
                 ) / K.sum(1 - l_true)
     return loss
 
+CombinedLoss = Make_loss_A(-lam)
+AdvLoss = Make_loss_A(1.0)
 
-AdversaryModel.compile(loss=Make_loss_A(1.0),
+AdversaryModel.compile(loss=AdvLoss,
                        optimizer=Adam()
                        )
 # ***************************************************
@@ -304,7 +306,7 @@ AdversaryModel.compile(loss=Make_loss_A(1.0),
 # ***************************************************
 if not os.path.isfile('Models/OriginalAdversaryReluAdam.h5'):
     ClassifierModel.trainable = False
-    AdversaryModel.compile(loss=Make_loss_A(1.0),
+    AdversaryModel.compile(loss=AdvLoss,
                            optimizer=Adam()
                            )
     AdversaryModel.summary()
@@ -392,7 +394,7 @@ batch_size = 512
 ClassOpt = SGD(lr=1e-3, momentum=0.5, decay=1e-5)
 AdvOpt = SGD(lr=1e-2, momentum=0.5, decay=1e-5)
 CombinedModel.compile(loss=['binary_crossentropy',
-                            Make_loss_A(-lam)],
+                            CombinedLoss],
                       optimizer=ClassOpt
                       )
 
@@ -407,8 +409,8 @@ for i in range(200):
     losses["L_A"].append(-m_losses[2][None][0])
     print(losses["L_A"][-1] / lam)
 
-    # if i % 5 == 0:
-    plot_losses(i, losses)
+    if i % 5 == 0:
+        plot_losses(i, losses)
 
     # Fit Classifier
     AdversaryModel.trainable = False
@@ -416,7 +418,7 @@ for i in range(200):
     for j in range(5):
         indices = np.random.permutation(len(X_trainscaled))[:batch_size]
         CombinedModel.compile(loss=['binary_crossentropy',
-                                    Make_loss_A(-lam)],
+                                    CombinedLoss],
                               optimizer=ClassOpt
                               )
         CombinedModel.train_on_batch(x=[X_trainscaled[indices],
@@ -431,7 +433,7 @@ for i in range(200):
     # Fit Adversary
     AdversaryModel.trainable = True
     ClassifierModel.trainable = False
-    AdversaryModel.compile(loss=Make_loss_A(1.0),
+    AdversaryModel.compile(loss=AdvLoss,
                            optimizer=AdvOpt
                            )
     for j in range(200):
