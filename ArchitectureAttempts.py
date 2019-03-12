@@ -116,12 +116,12 @@ es = EarlyStopping(monitor='val_loss', patience=11, verbose=0, mode='auto')
 
 Histories = {}
 Metrics = {}
-for depth in range(1, 9):
-    print('Working on model with {0} hidden layers with 50 nodes each'.format(depth))
+for depth in range(1, 6):
+    print('Working on model with {0} hidden layers with 100 nodes each'.format(depth))
     model = Sequential()
-    model.add(Dense(50, input_dim=X_trainscaled.shape[1], activation='relu'))
+    model.add(Dense(100, input_dim=X_trainscaled.shape[1], activation='relu'))
     for _ in range(depth):
-        model.add(Dense(50, activation='relu'))
+        model.add(Dense(100, activation='relu'))
     model.add(Dense(1, activation='sigmoid'))
 
     model.compile(optimizer=Adam(lr=1e-3),
@@ -143,12 +143,12 @@ for depth in range(1, 9):
                         callbacks=[reduce_lr, es]
                         )
     Histories[depth] = history
-    model.save('Models/ArchTest/NS50/Depth_{0}.h5'.format(depth))
+    model.save('Models/ArchTest/NS100/Depth_{0}.h5'.format(depth))
 
     OriginalPreds = model.predict(X_testscaled)
     fpr_O, tpr_O, thresholds_O = roc_curve(y_test, OriginalPreds)
-    np.save('Models/ArchTest/NS50/fprtpr/fpr_{0}.npy'.format(depth), fpr_O)
-    np.save('Models/ArchTest/NS50/fprtpr/tpr_{0}.npy'.format(depth), tpr_O)
+    np.save('Models/ArchTest/NS100/fprtpr/fpr_{0}.npy'.format(depth), fpr_O)
+    np.save('Models/ArchTest/NS100/fprtpr/tpr_{0}.npy'.format(depth), tpr_O)
     auc_O = auc(fpr_O, tpr_O)
     Metrics[depth] = [fpr_O, tpr_O, thresholds_O, auc_O]
 
@@ -170,9 +170,9 @@ for depth in range(1, 9):
     plt.legend(loc='best', frameon=False, fontsize=12)
     plt.yscale('log')
 
-    plt.suptitle('50 nodes per hidden layer', y=1.03, fontsize=16)
+    plt.suptitle('100 nodes per hidden layer', y=1.03, fontsize=16)
     plt.tight_layout(w_pad=2)
-    plt.savefig('Plots/ArchTest/NS50/Single_{0}.pdf'.format(depth), bbox_inches='tight')
+    plt.savefig('Plots/ArchTest/NS100/Single_{0}.pdf'.format(depth), bbox_inches='tight')
     plt.close()
     plt.clf()
 
@@ -197,7 +197,7 @@ plt.yscale('log')
 plt.legend(loc='best', frameon=False, fontsize=12)
 plt.tight_layout(w_pad=2)
 
-plt.suptitle('50 nodes per hidden layer', y=1.03, fontsize=16)
-plt.savefig('Plots/ArchTest/NS50/Combined.pdf', bbox_inches='tight')
+plt.suptitle('100 nodes per hidden layer', y=1.03, fontsize=16)
+plt.savefig('Plots/ArchTest/NS100/Combined.pdf', bbox_inches='tight')
 plt.close()
 plt.clf()
