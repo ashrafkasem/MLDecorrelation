@@ -41,3 +41,149 @@ plt.rcParams['xtick.direction'] = 'in'
 plt.rcParams['ytick.direction'] = 'in'
 plt.rcParams['xtick.top'] = True
 plt.rcParams['ytick.right'] = True
+
+TrainingIndices = np.load('data/TrainingIndices.npy')
+ValIndices = np.load('data/ValidationIndices.npy')
+TestIndices = np.load('data/TestIndices.npy')
+
+# ********** Load data *******************************
+SignalDF = pd.read_csv('data/data_sig.txt',
+                       skiprows=2,
+                       index_col=False,
+                       names=['(pruned)m', 'pT', 'tau_(1)^(1/2)',
+                              'tau_(1)^(1)', 'tau_(1)^(2)',
+                              'tau_(2)^(1/2)', 'tau_(2)^(1)', 'tau_(2)^(2)',
+                              'tau_(3)^(1/2)', 'tau_(3)^(1)', 'tau_(3)^(2)',
+                              'tau_(4)^(1)', 'tau_(4)^(2)']
+                       )
+BackgroundDF = pd.read_csv('data/data_bkg.txt',
+                           skiprows=2,
+                           index_col=False,
+                           names=['(pruned)m', 'pT', 'tau_(1)^(1/2)',
+                                  'tau_(1)^(1)', 'tau_(1)^(2)',
+                                  'tau_(2)^(1/2)', 'tau_(2)^(1)', 'tau_(2)^(2)',
+                                  'tau_(3)^(1/2)', 'tau_(3)^(1)', 'tau_(3)^(2)',
+                                  'tau_(4)^(1)', 'tau_(4)^(2)']
+                           )
+
+columns = SignalDF.columns
+labels = [r'$m_j$ [GeV]', r'$p_T$ [GeV]',
+          r'$\tau_1^{1/2}$', r'$\tau_1^{1}$',
+          r'$\tau_2^{1/2}$', r'$\tau_2^{1}$', r'$\tau_2^{2}$',
+          r'$\tau_3^{1/2}$', r'$\tau_3^{1}$', r'$\tau_3^{2}$',
+          r'$\tau_4^{1}$', r'$\tau_4^{2}$'
+          ]
+
+TrainingColumns = columns
+
+SignalDF['Label'] = 1
+BackgroundDF['Label'] = 0
+
+CombinedData = np.vstack([SignalDF[TrainingColumns].values,
+                          BackgroundDF[TrainingColumns].values
+                          ]
+                         )
+CombinedLabels = np.hstack([SignalDF['Label'].values,
+                            BackgroundDF['Label'].values
+                            ]
+                           ).reshape(CombinedData.shape[0], 1)
+
+X_train, y_train = CombinedData[TrainingIndices], CombinedLabels[TrainingIndices]
+X_test, y_test = CombinedData[TestIndices], CombinedLabels[TestIndices]
+X_val, y_val = CombinedData[ValIndices], CombinedLabels[ValIndices]
+
+mass_train = X_train[:, 0]
+mass_test = X_test[:, 0]
+mass_val = X_val[:, 0]
+
+# Do not use the mass for classification
+X_train = X_train[:, 1:]
+X_test = X_test[:, 1:]
+X_val = X_val[:, 1:]
+
+class_weights = {1: float(len(CombinedData)) / len(SignalDF),
+                 0: float(len(CombinedData)) / len(BackgroundDF)
+                 }
+
+SS = StandardScaler()
+X_trainscaled = SS.fit_transform(X_train)
+X_testscaled = SS.transform(X_test)
+X_valscaled = SS.transform(X_val)
+
+reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.1, verbose=1,
+                              patience=3, min_lr=1.0e-6)
+es = EarlyStopping(monitor='val_loss', patience=5, verbose=0, mode='auto')
+
+Histories = {}
+Metrics = {}
+for depth in range(1, 9):
+    print('Working on model with {0} hidden layers with 15 nodes each'.format(depth))
+    model = Sequential()
+    model.add(Dense(15, input_dim=X_trainscaled.shape[1], activation='relu'))
+    for _ in range(depth):
+        model.add(Dense(15, activation='relu'))
+    model.add(Dense(1, activation='sigmoid'))
+
+    model.compile(optimizer=Adam(lr=1e-3),
+                  loss='binary_crossentropy')
+
+    history = model.fit(x=X_trainscaled,
+                        y=y_train,
+                        validation_data=[X_valscaled, y_val],
+                        epochs=100,
+                        class_weight=class_weights,
+                        callbacks=[reduce_lr, es]
+                        )
+    Histories[depth] = history
+    model.save('Models/ArchTest/NS15/Depth_{0}.h5'.format(depth))
+
+    OriginalPreds = ClassifierModel.predict(X_testscaled)
+    fpr_O, tpr_O, thresholds_O = roc_curve(y_test, OriginalPreds)
+    np.save('Models/ArchTest/NS15/fprtpr/fpr_{0}.npy'.format(depth), fpr_O)
+    np.save('Models/ArchTest/NS15/fprtpr/tpr_{0}.npy'.format(depth), tpr_O)
+    auc_O = auc(fpr_O, tpr_O)
+    Metrics[depth] = [fpr_O, tpr_O, thresholds_O, auc_O]
+
+    plt.figure(figsize=(8, 4))
+    plt.subplot(1, 2, 1)
+    plt.plt(Histories[depth].history['loss'], label='training data')
+    plt.plt(Histories[depth].history['val_loss'], label='validation data')
+    plt.xlabel('Epochs')
+    plt.ylabel('Loss')
+    plt.legend(loc='best', frameon=False, fontsize=12)
+
+    plt.subplot(1, 2, 2)
+    plt.plot(tpr_O, 1.0 / fpr_O, label='{0} hidden layers: {1:0.04d}'.format(depth,
+                                                                             auc_O)
+             )
+    plt.xlabel(r'$\epsilon_S$')
+    plt.ylabel(r'$1 / \epsilon_B$')
+    plt.legend(loc='best', frameon=False, fontsize=12)
+
+    plt.suptitle('15 nodes per hidden layer', y=1.03, fontsize=16)
+    plt.savefig('Plots/ArchTest/NS15/Single_{0}.pdf'.format(depth), bbox_inches='tight')
+    plt.close()
+    plt.clf()
+
+
+plt.figure(figsize=(8, 4))
+for depth in range(1, 9):
+    plt.subplot(1, 2, 1)
+    plt.plt(Histories[depth].history['val_loss'])
+    plt.xlabel('Epochs')
+    plt.ylabel('Loss')
+    plt.legend(loc='best', frameon=False, fontsize=12)
+
+    fpr_O, tpr_O, thresholds_O, auc_O = Metrics[depth]
+    plt.subplot(1, 2, 2)
+    plt.plot(tpr_O, 1.0 / fpr_O, label='{0} hidden layers: {1:0.04d}'.format(depth,
+                                                                             auc_O)
+             )
+plt.xlabel(r'$\epsilon_S$')
+plt.ylabel(r'$1 / \epsilon_B$')
+plt.legend(loc='best', frameon=False, fontsize=12)
+
+plt.suptitle('15 nodes per hidden layer', y=1.03, fontsize=16)
+plt.savefig('Plots/ArchTest/NS15/Combined.pdf', bbox_inches='tight')
+plt.close()
+plt.clf()
