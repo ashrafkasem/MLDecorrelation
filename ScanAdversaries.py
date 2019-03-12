@@ -415,20 +415,17 @@ for i in range(200):
     # Fit Classifier
     AdversaryModel.trainable = False
     ClassifierModel.trainable = True
-    for j in range(5):
-        indices = np.random.permutation(len(X_trainscaled))[:batch_size]
-        CombinedModel.compile(loss=['binary_crossentropy',
-                                    CombinedLoss],
-                              optimizer=ClassOpt
-                              )
-        CombinedModel.train_on_batch(x=[X_trainscaled[indices],
-                                        y_train[indices]
-                                        ],
-                                     y=[y_train[indices],
-                                        mbin_train_labels[indices]
-                                        ],
-                                     class_weight=class_weights
-                                     )
+
+    CombinedModel.compile(loss=['binary_crossentropy',
+                                CombinedLoss],
+                          optimizer=ClassOpt
+                          )
+    CombinedModel.fit(x=[X_trainscaled, y_train],
+                      y=[y_train, mbin_train_labels],
+                      epochs=1,
+                      batch_size=X_trainscaled.shape[0],
+                      class_weight=class_weights
+                      )
 
     # Fit Adversary
     AdversaryModel.trainable = True
@@ -436,13 +433,13 @@ for i in range(200):
     AdversaryModel.compile(loss=AdvLoss,
                            optimizer=AdvOpt
                            )
-    for j in range(200):
-        indices = np.random.permutation(len(X_trainscaled))
-        AdversaryModel.train_on_batch(x=[X_trainscaled[indices],
-                                         y_train[indices]],
-                                      y=mbin_train_labels[indices]
-                                      )
 
+    AdversaryModel.fit(x=[X_trainscaled, y_train],
+                       y=[y_train, mbin_train_labels],
+                       epochs=200,
+                       batch_size=X_trainscaled.shape[0] / 20,
+                       class_weight=class_weights
+                       )
 # *********************************************************
 # Results after the adversarial training
 # *********************************************************
