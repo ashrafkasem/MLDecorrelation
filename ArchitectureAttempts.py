@@ -97,9 +97,9 @@ mass_test = X_test[:, 0]
 mass_val = X_val[:, 0]
 
 # Do not use the mass for classification
-X_train = X_train[:, 1:]
-X_test = X_test[:, 1:]
-X_val = X_val[:, 1:]
+X_train = X_train[:, 2:]
+X_test = X_test[:, 2:]
+X_val = X_val[:, 2:]
 
 class_weights = {1: float(len(CombinedData)) / len(SignalDF),
                  0: float(len(CombinedData)) / len(BackgroundDF)
