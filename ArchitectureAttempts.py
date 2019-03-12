@@ -147,10 +147,10 @@ for depth in range(1, MAXDEPTH):
     Histories[depth] = history
     if not os.path.isdir('Models/ArchTest/'+ DIRNAME):
         os.mkdir('Models/ArchTest/' + DIRNAME)
+        os.mkdir('Models/ArchTest/' + DIRNAME + '/fprtpr')
     if not os.path.isdir('Plots/ArchTest/' + DIRNAME):
         os.mkdir('Plots/ArchTest/' + DIRNAME)
-        os.mkdir('Plots/ArchTest/' + DIRNAME + '/fprtpr')
-    model.save('Models/ArchTest/NS50_noPT/Depth_{0}.h5'.format(depth))
+    model.save('Models/ArchTest/' + DIRNAME + '/Depth_{0}.h5'.format(depth))
 
     OriginalPreds = model.predict(X_testscaled)
     fpr_O, tpr_O, thresholds_O = roc_curve(y_test, OriginalPreds)
