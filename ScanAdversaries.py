@@ -136,6 +136,11 @@ class_weights = {1: float(len(CombinedData)) / len(SignalDF),
                  0: float(len(CombinedData)) / len(BackgroundDF)
                  }
 
+val_weights = np.ones_like(y_val)
+val_weights[y_val == 0] = class_weights[0]
+val_weights[y_val == 1] = class_weights[1]
+val_weights = val_weights.flatten()
+
 SS = StandardScaler()
 X_trainscaled = SS.fit_transform(X_train)
 X_testscaled = SS.transform(X_test)
@@ -158,12 +163,13 @@ mbin_validate_labels = keras.utils.to_categorical(mbin_validate, num_classes=10)
 # Network information
 # ****************************************************
 reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.1, verbose=1,
-                              patience=3, min_lr=1.0e-6)
-es = EarlyStopping(monitor='val_loss', patience=5, verbose=0, mode='auto')
+                              patience=5, min_lr=1.0e-6)
+es = EarlyStopping(monitor='val_loss', patience=11, verbose=0, mode='auto')
 
 inputs = Input(shape=(len(TrainingColumns), ))
-Classifier = Dense(512, activation='relu')(inputs)
-Classifier = Dense(32, activation='relu')(Classifier)
+Classifier = Dense(50, activation='relu')(inputs)
+Classifier = Dense(50, activation='relu')(Classifier)
+Classifier = Dense(50, activation='relu')(Classifier)
 Classifier = Dense(1, activation='sigmoid')(Classifier)
 ClassifierModel = Model(inputs=inputs, outputs=Classifier)
 
@@ -176,8 +182,8 @@ if not os.path.isfile('Models/OriginalClassifer.h5'):
     ClassifierModel.summary()
     ClassifierModel.fit(X_trainscaled,
                         y_train,
-                        validation_data=[X_valscaled, y_val],
-                        epochs=50,
+                        validation_data=[X_valscaled, y_val, val_weights],
+                        epochs=100,
                         class_weight=class_weights,
                         callbacks=[reduce_lr, es]
                         )
@@ -190,12 +196,14 @@ if not os.path.isfile('Models/OriginalClassifer.h5'):
     i70 = np.argmin(np.abs(tpr_O - 0.7))
     i80 = np.argmin(np.abs(tpr_O - 0.8))
     i90 = np.argmin(np.abs(tpr_O - 0.9))
+    i95 = np.argmin(np.abs(tpr_O - 0.95))
 
     fp50, tp50, thr50 = fpr_O[i50], tpr_O[i50], thresholds_O[i50]
     fp60, tp60, thr60 = fpr_O[i60], tpr_O[i60], thresholds_O[i60]
     fp70, tp70, thr70 = fpr_O[i70], tpr_O[i70], thresholds_O[i70]
     fp80, tp80, thr80 = fpr_O[i80], tpr_O[i80], thresholds_O[i80]
     fp90, tp90, thr90 = fpr_O[i90], tpr_O[i90], thresholds_O[i90]
+    fp95, tp95, thr95 = fpr_O[i95], tpr_O[i95], thresholds_O[i95]
 
     plt.figure(figsize=(9, 3))
 
@@ -208,9 +216,9 @@ if not os.path.isfile('Models/OriginalClassifer.h5'):
              )
     plt.plot([], [], color='k', label='Backgrounds')
     plt.plot([], [], color='C0', label='Signals')
-    plt.vlines([thr50, thr60, thr70, thr80, thr90],
+    plt.vlines([thr50, thr60, thr70, thr80, thr90, thr95],
                ymin=1e-1, ymax=1e3,
-               colors=['C5', 'C4', 'C3', 'C2', 'C1']
+               colors=['C5', 'C4', 'C3', 'C2', 'C1', 'C6']
                )
     plt.yscale('log')
     plt.legend(loc='upper left', frameon=False, fontsize=10)
@@ -225,6 +233,7 @@ if not os.path.isfile('Models/OriginalClassifer.h5'):
     plt.scatter(fp70, tp70, color='C3')
     plt.scatter(fp80, tp80, color='C2')
     plt.scatter(fp90, tp90, color='C1')
+    plt.scatter(fp95, tp95, color='C6')
     plt.xlabel('False positve rate')
     plt.ylabel('True positive rate')
     plt.legend(loc='lower right', frameon=False, fontsize=10)
@@ -250,6 +259,9 @@ if not os.path.isfile('Models/OriginalClassifer.h5'):
     plt.hist(mass_test[back_i & (OriginalPreds.flatten() > thr90)],
              bins=50, range=(50, 400),
              histtype='step', color='C1')
+    plt.hist(mass_test[back_i & (OriginalPreds.flatten() > thr95)],
+             bins=50, range=(50, 400),
+             histtype='step', color='C6')
     plt.hist(mass_test[(y_test == 1).flatten()].flatten(),
              weights=np.ones(np.sum(y_test == 1)) * 0.15,
              bins=50, range=(50, 400),
@@ -294,6 +306,7 @@ def Make_loss_A(lam):
                 K.categorical_crossentropy(y_true, y_pred) * (1 - l_true)
                 ) / K.sum(1 - l_true)
     return loss
+
 
 CombinedLoss = Make_loss_A(-lam)
 AdvLoss = Make_loss_A(1.0)
@@ -391,8 +404,12 @@ def plot_losses(i, losses):
 
 batch_size = 512
 
-ClassOpt = SGD(lr=1e-3, momentum=0.5, decay=1e-5)
-AdvOpt = SGD(lr=1e-2, momentum=0.5, decay=1e-5)
+min_loss = np.inf
+count = 0
+lr = 1e-3
+ClassOpt = Adam(lr=lr)  #  SGD(lr=1e-3, momentum=0.5, decay=1e-5)
+AdvOpt = Adam(lr=lr)  # SGD(lr=1e-3, momentum=0.5, decay=1e-5)
+
 CombinedModel.compile(loss=['binary_crossentropy',
                             CombinedLoss],
                       optimizer=ClassOpt
@@ -409,6 +426,22 @@ for i in range(200):
     losses["L_A"].append(-m_losses[2][None][0])
     print(losses["L_A"][-1] / lam)
 
+    current_loss = m_losses[0][None][0]
+    if current_loss < min_loss:
+        min_loss = current_loss
+    else:
+        count += 1
+
+    if count == 5:
+        count = 0
+        lr = lr * np.sqrt(0.1)
+        ClassOpt = Adam(lr=lr)  # SGD(lr=1e-3, momentum=0.5, decay=1e-5)
+        AdvOpt = Adam(lr=lr)
+        print('Lowering learning rate to {0:1.01e}'.format(lr))
+
+    if lr < 1e-6:
+        break
+
     if i % 5 == 0:
         plot_losses(i, losses)
 
@@ -422,9 +455,10 @@ for i in range(200):
                           )
     CombinedModel.fit(x=[X_trainscaled, y_train],
                       y=[y_train, mbin_train_labels],
-                      epochs=1,
+                      epochs=5,
                       batch_size=X_trainscaled.shape[0],
-                      class_weight=class_weights
+                      class_weight=class_weights,
+                      verbose=0
                       )
 
     # Fit Adversary
@@ -435,10 +469,10 @@ for i in range(200):
                            )
 
     AdversaryModel.fit(x=[X_trainscaled, y_train],
-                       y=[y_train, mbin_train_labels],
-                       epochs=200,
-                       batch_size=X_trainscaled.shape[0] / 20,
-                       class_weight=class_weights
+                       y=mbin_train_labels,
+                       epochs=50,
+                       batch_size=X_trainscaled.shape[0],
+                       verbose=0
                        )
 # *********************************************************
 # Results after the adversarial training
@@ -451,12 +485,14 @@ i60 = np.argmin(np.abs(tpr_O - 0.6))
 i70 = np.argmin(np.abs(tpr_O - 0.7))
 i80 = np.argmin(np.abs(tpr_O - 0.8))
 i90 = np.argmin(np.abs(tpr_O - 0.9))
+i95 = np.argmin(np.abs(tpr_O - 0.95))
 
 fp50, tp50, thr50 = fpr_O[i50], tpr_O[i50], thresholds_O[i50]
 fp60, tp60, thr60 = fpr_O[i60], tpr_O[i60], thresholds_O[i60]
 fp70, tp70, thr70 = fpr_O[i70], tpr_O[i70], thresholds_O[i70]
 fp80, tp80, thr80 = fpr_O[i80], tpr_O[i80], thresholds_O[i80]
 fp90, tp90, thr90 = fpr_O[i90], tpr_O[i90], thresholds_O[i90]
+fp95, tp95, thr95 = fpr_O[i95], tpr_O[i95], thresholds_O[i95]
 
 plt.figure(figsize=(9, 3))
 
@@ -469,9 +505,9 @@ plt.hist(FinalPreds[y_test == 1], histtype='step',
          )
 plt.plot([], [], color='k', label='Backgrounds')
 plt.plot([], [], color='C0', label='Signals')
-plt.vlines([thr50, thr60, thr70, thr80, thr90],
+plt.vlines([thr50, thr60, thr70, thr80, thr90, thr95],
            ymin=1e-1, ymax=1e3,
-           colors=['C5', 'C4', 'C3', 'C2', 'C1']
+           colors=['C5', 'C4', 'C3', 'C2', 'C1', 'C6']
            )
 plt.yscale('log')
 plt.legend(loc='upper left', frameon=False, fontsize=10)
@@ -486,6 +522,7 @@ plt.scatter(fp60, tp60, color='C4')
 plt.scatter(fp70, tp70, color='C3')
 plt.scatter(fp80, tp80, color='C2')
 plt.scatter(fp90, tp90, color='C1')
+plt.scatter(fp95, tp95, color='C6')
 plt.xlabel('False positve rate')
 plt.ylabel('True positive rate')
 plt.legend(loc='lower right', frameon=False, fontsize=10)
@@ -511,7 +548,10 @@ plt.hist(mass_test[back_i & (FinalPreds.flatten() > thr80)],
 plt.hist(mass_test[back_i & (FinalPreds.flatten() > thr90)],
          bins=50, range=(50, 400),
          histtype='step', color='C1')
-plt.hist(mass_test[(y_test == 1).flatten()].flatten(),
+plt.hist(mass_test[back_i & (FinalPreds.flatten() > thr95)],
+         bins=50, range=(50, 400),
+         histtype='step', color='C6')
+plt.hist(mass_test[(y_test == 1).flatten()],
          weights=np.ones(np.sum(y_test == 1)) * 0.15,
          bins=50, range=(50, 400),
          color='C0', alpha=0.2)
@@ -519,18 +559,18 @@ plt.yscale('log')
 plt.xlabel(r'$m_j$ [GeV]')
 plt.ylabel('Events per bin')
 
-plt.suptitle('No Adversary', y=1.02)
+plt.suptitle('Adversary $\lambda=$' + str(lam), y=1.02)
 plt.tight_layout(w_pad=2)
-plt.savefig('Plots/Adversary_lam_{0}_final.pdf'.format(lam),
+plt.savefig('Plots/Lambda_{0}/Adversary_lam_{0}_final.pdf'.format(lam),
             bbox_inches='tight')
 
 AdversaryModel.save_weights('Models/Adv_lam_{0}_final.h5'.format(lam))
 ClassifierModel.save('Models/Class_lam_{0}_final.h5'.format(lam))
 ClassifierModel.save_weights('Models/Class_lam_{0}_final_weights.h5'.format(lam))
 
-script = ' ./ffmpeg -framerate 10 -i '
-script += '/projects/het/bostdiek/Decorellation/Plots/Lambda_{0}/'.format(lam)
-script += 'Adversary_lambda_{0}_step_%03d.png -pix_fmt yuv420p '.format(lam)
-script += '/projects/het/bostdiek/Decorellation/Plots/Lambda_{0}/Adv.mp4'.format(lam)
-
-call(script, shell=True, cwd='/projects/het/bostdiek/Tools/FFMPEG/ffmpeg')
+# script = ' ./ffmpeg -framerate 10 -i '
+# script += '/projects/het/bostdiek/Decorellation/Plots/Lambda_{0}/'.format(lam)
+# script += 'Adversary_lambda_{0}_step_*.png -pix_fmt yuv420p '.format(lam)
+# script += '/projects/het/bostdiek/Decorellation/Plots/Lambda_{0}/Adv.mp4'.format(lam)
+#
+# call(script, shell=True, cwd='/projects/het/bostdiek/Tools/FFMPEG/ffmpeg')
