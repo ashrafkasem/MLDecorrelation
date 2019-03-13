@@ -132,6 +132,10 @@ mass_train = X_train[:, 0]
 mass_test = X_test[:, 0]
 mass_val = X_val[:, 0]
 
+X_train = X_train[:, 1:]
+X_test = X_test[:, 1:]
+X_val = X_val[:, 1:]
+
 class_weights = {1: float(len(CombinedData)) / len(SignalDF),
                  0: float(len(CombinedData)) / len(BackgroundDF)
                  }
@@ -141,6 +145,11 @@ val_weights[y_val == 0] = class_weights[0]
 val_weights[y_val == 1] = class_weights[1]
 val_weights = val_weights.flatten()
 
+tr_weights = np.ones_like(y_train)
+tr_weights[y_train == 0] = class_weights[0]
+tr_weights[y_train == 1] = class_weights[1]
+tr_weights = tr_weights.flatten()
+
 SS = StandardScaler()
 X_trainscaled = SS.fit_transform(X_train)
 X_testscaled = SS.transform(X_test)
@@ -149,7 +158,20 @@ X_valscaled = SS.transform(X_val)
 # ****************************************************
 # Digitize the masses for the adversary
 # ****************************************************
-massbins = np.linspace(50, 400, 11)
+mass_bins_setup = mass_train.copy()
+mass_bins_setup = mass_bins_setup[(y_train == 0).flatten()]
+mass_bins_setup.sort()
+size = int(len(mass_bins_setup) / 10)
+
+massbins = [50,
+            mass_bins_setup[size], mass_bins_setup[size * 2],
+            mass_bins_setup[size * 3], mass_bins_setup[size * 4],
+            mass_bins_setup[size * 5], mass_bins_setup[size * 6],
+            mass_bins_setup[size * 7], mass_bins_setup[size * 8],
+            mass_bins_setup[size * 9],
+            400]
+
+print(massbins)
 
 mbin_train = np.digitize(mass_train, massbins) - 1
 mbin_test = np.digitize(mass_test, massbins) - 1
@@ -164,9 +186,9 @@ mbin_validate_labels = keras.utils.to_categorical(mbin_validate, num_classes=10)
 # ****************************************************
 reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.1, verbose=1,
                               patience=5, min_lr=1.0e-6)
-es = EarlyStopping(monitor='val_loss', patience=11, verbose=0, mode='auto')
+es = EarlyStopping(monitor='val_loss', patience=10, verbose=0, mode='auto')
 
-inputs = Input(shape=(len(TrainingColumns), ))
+inputs = Input(shape=(X_test.shape[1], ))
 Classifier = Dense(50, activation='relu')(inputs)
 Classifier = Dense(50, activation='relu')(Classifier)
 Classifier = Dense(50, activation='relu')(Classifier)
@@ -262,10 +284,10 @@ if not os.path.isfile('Models/OriginalClassifer.h5'):
     plt.hist(mass_test[back_i & (OriginalPreds.flatten() > thr95)],
              bins=50, range=(50, 400),
              histtype='step', color='C6')
-    plt.hist(mass_test[(y_test == 1).flatten()].flatten(),
+    plt.hist(mass_test[~back_i],
              weights=np.ones(np.sum(y_test == 1)) * 0.15,
              bins=50, range=(50, 400),
-             color='C0', alpha=0.2)
+             color='C0')
     plt.yscale('log')
     plt.xlabel(r'$m_j$ [GeV]')
     plt.ylabel('Events per bin')
@@ -283,6 +305,7 @@ else:
 # Now the adversary uses the whole input, but only takes the output of the classifier
 # ***************************************************
 Adversary = ClassifierModel(inputs)
+Adversary = Dense(50, activation='relu')(Adversary)
 Adversary = Dense(50, activation='relu')(Adversary)
 Adversary = Dense(10, activation='softmax')(Adversary)
 # Adversary = K.tf.nn.softmax(Adversary)
@@ -327,7 +350,7 @@ if not os.path.isfile('Models/OriginalAdversaryReluAdam.h5'):
                        y=mbin_train_labels,
                        validation_data=[[X_valscaled, y_val],
                                         mbin_validate_labels],
-                       epochs=100,
+                       epochs=50,
                        callbacks=[reduce_lr, es]
                        )
 
@@ -406,18 +429,21 @@ batch_size = 512
 
 min_loss = np.inf
 count = 0
-lr = 1e-3
-ClassOpt = Adam(lr=lr)  #  SGD(lr=1e-3, momentum=0.5, decay=1e-5)
-AdvOpt = Adam(lr=lr)  # SGD(lr=1e-3, momentum=0.5, decay=1e-5)
+
+mylr = 1e-5
+ClassOpt = Adam(lr=mylr)  # SGD(lr=1e-3, momentum=0.5, decay=1e-5)
+AdvOpt = Adam(lr=mylr)  # SGD(lr=1e-2, momentum=0.5, decay=1e-5)
 
 CombinedModel.compile(loss=['binary_crossentropy',
                             CombinedLoss],
                       optimizer=ClassOpt
                       )
 
-for i in range(200):
+for i in range(500):
     m_losses = CombinedModel.evaluate([X_valscaled, y_val],
                                       [y_val, mbin_validate_labels],
+                                      sample_weight=[val_weights,
+                                                     np.ones_like(val_weights)],
                                       verbose=0
                                       )
 
@@ -429,21 +455,26 @@ for i in range(200):
     current_loss = m_losses[0][None][0]
     if current_loss < min_loss:
         min_loss = current_loss
+        count = 0
     else:
         count += 1
-
-    if count == 5:
-        count = 0
-        lr = lr * np.sqrt(0.1)
-        ClassOpt = Adam(lr=lr)  # SGD(lr=1e-3, momentum=0.5, decay=1e-5)
-        AdvOpt = Adam(lr=lr)
-        print('Lowering learning rate to {0:1.01e}'.format(lr))
-
-    if lr < 1e-6:
+    #
+    if count > 0 and count % 10 == 0:
+        # break
+        # count = 0
+        mylr = mylr * np.sqrt(0.1)
+        ClassOpt = Adam(lr=mylr)
+        AdvOpt = Adam(lr=mylr)
+        print('Lowering learning rate to {0:1.01e}'.format(mylr))
+    #
+    if count == 20:
+        plot_losses(i, losses)
         break
-
+    # #
     if i % 5 == 0:
         plot_losses(i, losses)
+
+    indices = np.random.permutation(len(X_trainscaled))
 
     # Fit Classifier
     AdversaryModel.trainable = False
@@ -453,13 +484,25 @@ for i in range(200):
                                 CombinedLoss],
                           optimizer=ClassOpt
                           )
-    CombinedModel.fit(x=[X_trainscaled, y_train],
-                      y=[y_train, mbin_train_labels],
-                      epochs=5,
-                      batch_size=X_trainscaled.shape[0],
-                      class_weight=class_weights,
-                      verbose=0
-                      )
+    for j in range(5):
+        indices = np.random.permutation(len(X_trainscaled))[:batch_size]
+        CombinedModel.train_on_batch(x=[X_trainscaled[indices],
+                                        y_train[indices]
+                                        ],
+                                     y=[y_train[indices],
+                                        mbin_train_labels[indices]
+                                        ],
+                                     sample_weight=[tr_weights[indices],
+                                                    np.ones_like(tr_weights[indices])
+                                                    ]
+                                     )
+    # CombinedModel.fit(x=[X_trainscaled, y_train],
+    #                   y=[y_train, mbin_train_labels],
+    #                   epochs=1,
+    #                   batch_size=int(X_trainscaled.shape[0] / 10),
+    #                   class_weight=class_weights,
+    #                   verbose=0
+    #                   )
 
     # Fit Adversary
     AdversaryModel.trainable = True
@@ -467,13 +510,19 @@ for i in range(200):
     AdversaryModel.compile(loss=AdvLoss,
                            optimizer=AdvOpt
                            )
+    for j in range(200):
+        indices = np.random.permutation(len(X_trainscaled))
+        AdversaryModel.train_on_batch(x=[X_trainscaled[indices],
+                                         y_train[indices]],
+                                      y=mbin_train_labels[indices]
+                                      )
 
-    AdversaryModel.fit(x=[X_trainscaled, y_train],
-                       y=mbin_train_labels,
-                       epochs=50,
-                       batch_size=X_trainscaled.shape[0],
-                       verbose=0
-                       )
+    # AdversaryModel.fit(x=[X_trainscaled, y_train],
+    #                    y=mbin_train_labels,
+    #                    epochs=20,
+    #                    batch_size=X_trainscaled.shape[0],
+    #                    verbose=0
+    #                    )
 # *********************************************************
 # Results after the adversarial training
 # *********************************************************
@@ -551,7 +600,7 @@ plt.hist(mass_test[back_i & (FinalPreds.flatten() > thr90)],
 plt.hist(mass_test[back_i & (FinalPreds.flatten() > thr95)],
          bins=50, range=(50, 400),
          histtype='step', color='C6')
-plt.hist(mass_test[(y_test == 1).flatten()],
+plt.hist(mass_test[~back_i],
          weights=np.ones(np.sum(y_test == 1)) * 0.15,
          bins=50, range=(50, 400),
          color='C0', alpha=0.2)
