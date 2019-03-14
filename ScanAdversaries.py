@@ -526,6 +526,7 @@ for i in range(500):
 # *********************************************************
 # Results after the adversarial training
 # *********************************************************
+ClassifierModel.compile(optimizer='adam', loss='binary_crossentropy')
 FinalPreds = ClassifierModel.predict(X_testscaled)
 fpr_O, tpr_O, thresholds_O = roc_curve(y_test, FinalPreds)
 auc_O = auc(fpr_O, tpr_O)
@@ -579,6 +580,10 @@ plt.xscale('log')
 
 plt.subplot(1, 3, 3)
 back_i = (y_test == 0).flatten()
+plt.hist(mass_test[~back_i],
+         weights=np.ones(np.sum(y_test == 1)) * 0.15,
+         bins=50, range=(50, 400),
+         color='C0')
 plt.hist(mass_test[back_i],
          bins=50, range=(50, 400),
          histtype='step', color='k')
@@ -600,10 +605,6 @@ plt.hist(mass_test[back_i & (FinalPreds.flatten() > thr90)],
 plt.hist(mass_test[back_i & (FinalPreds.flatten() > thr95)],
          bins=50, range=(50, 400),
          histtype='step', color='C6')
-plt.hist(mass_test[~back_i],
-         weights=np.ones(np.sum(y_test == 1)) * 0.15,
-         bins=50, range=(50, 400),
-         color='C0', alpha=0.2)
 plt.yscale('log')
 plt.xlabel(r'$m_j$ [GeV]')
 plt.ylabel('Events per bin')
