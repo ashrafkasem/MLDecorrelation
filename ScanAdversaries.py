@@ -47,12 +47,12 @@ if len(sys.argv) != 2:
 else:
     runnum = int(sys.argv[1])
 
-rundict = {
-    0: 100000000,
-    1: 1000000000,
-    2: 10000000000
-}
-lam = rundict[runnum]
+# rundict = {
+#     0: 100000000,
+#     1: 1000000000,
+#     2: 10000000000
+# }
+lam = 10 ** (runnum)
 print('Using {0} for the lagrange multiplier of the adversary'.format(lam))
 
 # ********** Load data *******************************
@@ -420,7 +420,7 @@ batch_size = 512
 min_loss = np.inf
 count = 0
 
-mylr = 1e-5
+mylr = 1e-4
 ClassOpt = Adam(lr=mylr)  # SGD(lr=1e-3, momentum=0.5, decay=1e-5)
 AdvOpt = Adam(lr=mylr)  # SGD(lr=1e-2, momentum=0.5, decay=1e-5)
 
@@ -449,17 +449,18 @@ for i in range(500):
     else:
         count += 1
     #
-    if count > 0 and count % 10 == 0:
-        # break
-        # count = 0
-        mylr = mylr * np.sqrt(0.1)
-        ClassOpt = Adam(lr=mylr)
-        AdvOpt = Adam(lr=mylr)
-        print('Lowering learning rate to {0:1.01e}'.format(mylr))
+    if count > 0 and count % 15 == 0:
+        if mylr >= 1e-5:
+            mylr = mylr * np.sqrt(0.1)
+            ClassOpt = Adam(lr=mylr)
+            AdvOpt = Adam(lr=mylr)
+            print('Lowering learning rate to {0:1.01e}'.format(mylr))
+        else:
+            print('Has not improved in {1} epochs with lr={0:1.01e}'.format(mylr, count))
     #
-    if count == 20:
-        plot_losses(i, losses)
-        break
+    # if count == 20:
+    #     plot_losses(i, losses)
+    #     break
     # #
     if i % 5 == 0:
         plot_losses(i, losses)
@@ -486,13 +487,6 @@ for i in range(500):
                                                     np.ones_like(tr_weights[indices])
                                                     ]
                                      )
-    # CombinedModel.fit(x=[X_trainscaled, y_train],
-    #                   y=[y_train, mbin_train_labels],
-    #                   epochs=1,
-    #                   batch_size=int(X_trainscaled.shape[0] / 10),
-    #                   class_weight=class_weights,
-    #                   verbose=0
-    #                   )
 
     # Fit Adversary
     AdversaryModel.trainable = True
@@ -507,12 +501,6 @@ for i in range(500):
                                       y=mbin_train_labels[indices]
                                       )
 
-    # AdversaryModel.fit(x=[X_trainscaled, y_train],
-    #                    y=mbin_train_labels,
-    #                    epochs=20,
-    #                    batch_size=X_trainscaled.shape[0],
-    #                    verbose=0
-    #                    )
 # *********************************************************
 # Results after the adversarial training
 # *********************************************************
