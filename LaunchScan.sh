@@ -6,7 +6,7 @@
 #SBATCH --ntasks-per-node=7   ### Nuber of tasks to be launched per Node
 #SBATCH --gres=gpu:1          ### General REServation of gpu:number of gpus
 #SBATCH --mem=32G             ### Memory
-#SBATCH --array=0-12           ### Arrays for lambda
+#SBATCH --array=0-2           ### Arrays for lambda
 #SBATCH --output=SlurmOuts/output_512Batch_%a.txt
 #SBATCH --error=SlrumErrors/error_512Batch_%a.txt
 #SBATCH --mail-user=bostdiek@uoregon.edu ### email for alerts

@@ -48,19 +48,9 @@ else:
     runnum = int(sys.argv[1])
 
 rundict = {
-    0: 1,
-    1: 2,
-    2: 5,
-    3: 10,
-    4: 20,
-    5: 50,
-    6: 100,
-    7: 200,
-    8: 500,
-    9: 1000,
-    10: 2000,
-    11: 5000,
-    12: 10000
+    0: 100000000,
+    1: 1000000000,
+    2: 10000000000
 }
 lam = rundict[runnum]
 print('Using {0} for the lagrange multiplier of the adversary'.format(lam))
