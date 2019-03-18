@@ -464,6 +464,8 @@ for i in range(500):
     # #
     if i % 5 == 0:
         plot_losses(i, losses)
+        AdversaryModel.save_weights('Models/lam_{0}/Adv_lam_{0}_{1}_weigths.h5'.format(lam, i))
+        ClassifierModel.save_weights('Models/lam_{0}/Class_lam_{0}_{1}_weights.h5'.format(lam, i))
 
     indices = np.random.permutation(len(X_trainscaled))
 
@@ -592,9 +594,9 @@ plt.tight_layout(w_pad=2)
 plt.savefig('Plots/Lambda_{0}/Adversary_lam_{0}_final.pdf'.format(lam),
             bbox_inches='tight')
 
-AdversaryModel.save_weights('Models/Adv_lam_{0}_final.h5'.format(lam))
-ClassifierModel.save('Models/Class_lam_{0}_final.h5'.format(lam))
-ClassifierModel.save_weights('Models/Class_lam_{0}_final_weights.h5'.format(lam))
+AdversaryModel.save_weights('Models/lam_{0}/Adv_lam_{0}_final.h5'.format(lam))
+ClassifierModel.save('Models/lam_{0}/Class_lam_{0}_final.h5'.format(lam))
+ClassifierModel.save_weights('Models/lam_{0}/Class_lam_{0}_final_weights.h5'.format(lam))
 
 # script = ' ./ffmpeg -framerate 10 -i '
 # script += '/projects/het/bostdiek/Decorellation/Plots/Lambda_{0}/'.format(lam)
