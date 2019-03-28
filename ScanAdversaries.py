@@ -295,8 +295,8 @@ else:
 # Now the adversary uses the whole input, but only takes the output of the classifier
 # ***************************************************
 Adversary = ClassifierModel(inputs)
-Adversary = Dense(50, activation='relu')(Adversary)
-Adversary = Dense(50, activation='relu')(Adversary)
+Adversary = Dense(50, activation='tanh')(Adversary)
+Adversary = Dense(50, activation='tanh')(Adversary)
 Adversary = Dense(10, activation='softmax')(Adversary)
 # Adversary = K.tf.nn.softmax(Adversary)
 
@@ -330,7 +330,7 @@ AdversaryModel.compile(loss=AdvLoss,
 # ***************************************************
 # Let the adversary learn for a while
 # ***************************************************
-if not os.path.isfile('Models/OriginalAdversaryReluAdam.h5'):
+if not os.path.isfile('Models/OriginalAdversaryTanhAdam.h5'):
     ClassifierModel.trainable = False
     AdversaryModel.compile(loss=AdvLoss,
                            optimizer=Adam()
@@ -359,9 +359,9 @@ if not os.path.isfile('Models/OriginalAdversaryReluAdam.h5'):
     plt.close()
     plt.clf()
 
-    AdversaryModel.save_weights('Models/OriginalAdversaryReluAdam.h5')
+    AdversaryModel.save_weights('Models/OriginalAdversaryTanhAdam.h5')
 else:
-    AdversaryModel.load_weights('Models/OriginalAdversaryReluAdam.h5')
+    AdversaryModel.load_weights('Models/OriginalAdversaryTanhAdam.h5')
 
 # ***************************************************
 # Now put the two models together into one model
@@ -420,14 +420,16 @@ batch_size = 512
 min_loss = np.inf
 count = 0
 
-mylr = 1e-4
+mylr = 1e-5
 ClassOpt = Adam(lr=mylr)  # SGD(lr=1e-3, momentum=0.5, decay=1e-5)
-AdvOpt = Adam(lr=mylr)  # SGD(lr=1e-2, momentum=0.5, decay=1e-5)
+AdvOpt = Adam(lr=10 * mylr)  # SGD(lr=1e-2, momentum=0.5, decay=1e-5)
 
 CombinedModel.compile(loss=['binary_crossentropy',
                             CombinedLoss],
                       optimizer=ClassOpt
                       )
+if not os.path.isdir('Models/lam_{0}/'.format(lam)):
+    os.mkdir('Models/lam_{0}'.format(lam))
 
 for i in range(500):
     m_losses = CombinedModel.evaluate([X_valscaled, y_val],
@@ -453,7 +455,7 @@ for i in range(500):
         if mylr >= 1e-5:
             mylr = mylr * np.sqrt(0.1)
             ClassOpt = Adam(lr=mylr)
-            AdvOpt = Adam(lr=mylr)
+            # AdvOpt = Adam(lr=mylr)
             print('Lowering learning rate to {0:1.01e}'.format(mylr))
         else:
             print('Has not improved in {1} epochs with lr={0:1.01e}'.format(mylr, count))
