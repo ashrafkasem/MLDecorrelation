@@ -452,7 +452,7 @@ for i in range(500):
         count += 1
     #
     if count > 0 and count % 15 == 0:
-        if mylr >= 1e-5:
+        if mylr > 1e-5:
             mylr = mylr * np.sqrt(0.1)
             ClassOpt = Adam(lr=mylr)
             # AdvOpt = Adam(lr=mylr)
