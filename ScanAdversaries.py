@@ -42,10 +42,11 @@ plt.rcParams['ytick.direction'] = 'in'
 plt.rcParams['xtick.top'] = True
 plt.rcParams['ytick.right'] = True
 
-if len(sys.argv) != 2:
-    sys.exit('Need to provide run number')
+if len(sys.argv) != 3:
+    sys.exit('Need to provide run number and pronginess')
 else:
-    runnum = int(sys.argv[1])
+    prong = int(sys.argv[1])
+    runnum = int(sys.argv[2])
 
 # rundict = {
 #     0: 100000000,
@@ -53,10 +54,11 @@ else:
 #     2: 10000000000
 # }
 lam = 10 ** (runnum)
+print('Running tests for {0}-prong signal jets'.format(prong))
 print('Using {0} for the lagrange multiplier of the adversary'.format(lam))
 
 # ********** Load data *******************************
-SignalDF = pd.read_csv('data/data_sig.txt',
+SignalDF = pd.read_csv('data/BSM_2P_3P_4P_SmallDataSet/data_sig_{}p.txt'.format(prong),
                        skiprows=2,
                        index_col=False,
                        names=['(pruned)m', 'pT', 'tau_(1)^(1/2)',
@@ -65,7 +67,7 @@ SignalDF = pd.read_csv('data/data_sig.txt',
                               'tau_(3)^(1/2)', 'tau_(3)^(1)', 'tau_(3)^(2)',
                               'tau_(4)^(1)', 'tau_(4)^(2)']
                        )
-BackgroundDF = pd.read_csv('data/data_bkg.txt',
+BackgroundDF = pd.read_csv('data/BSM_2P_3P_4P_SmallDataSet/data_bkg.txt',
                            skiprows=2,
                            index_col=False,
                            names=['(pruned)m', 'pT', 'tau_(1)^(1/2)',
@@ -97,7 +99,7 @@ CombinedLabels = np.hstack([SignalDF['Label'].values,
                             ]
                            ).reshape(CombinedData.shape[0], 1)
 
-if not os.path.isfile('data/TrainingIndices_SmallMassRange.npy'):
+if not os.path.isfile('data/TrainingIndices_{0}p.npy'.format(prong)):
     indices = np.arange(CombinedLabels.shape[0])
     # trainingindices = indices[(CombinedData[:, 0] > 100) & (CombinedData[:, 0] <= 150)]
     # other_indices = indices[~np.isin(indices, trainingindices)]
@@ -105,27 +107,20 @@ if not os.path.isfile('data/TrainingIndices_SmallMassRange.npy'):
     training_size = int(0.7 * len(indices))
     validation_size = int(0.15 * len(indices))
     TrainingIndices = indices[: training_size]
-    TrainingIndices = TrainingIndices[(CombinedData[TrainingIndices, 0] > 100) &
-                                      (CombinedData[TrainingIndices, 0] <= 150)]
+    # TrainingIndices = TrainingIndices[(CombinedData[TrainingIndices, 0] > 100) &
+    #                                   (CombinedData[TrainingIndices, 0] <= 150)]
     print(TrainingIndices.shape)
     ValIndices = indices[training_size: training_size + validation_size]
     TestIndices = indices[training_size + validation_size:]
-    # ValIndices = np.append(trainingindices[training_size: training_size + validation_size],
-    #                        other_indices[:int(len(other_indices) / 2)]
-    #                        )
-    # print(ValIndices)
     print(ValIndices.shape)
-    # TestIndices = np.append(trainingindices[training_size + validation_size:],
-    #                         other_indices[int(len(other_indices) / 2):]
-    #                         )
     print(TestIndices.shape)
-    np.save('data/TrainingIndices_SmallMassRange.npy', TrainingIndices)
-    np.save('data/ValidationIndices_SmallMassRange.npy', ValIndices)
-    np.save('data/TestIndices_SmallMassRange.npy', TestIndices)
+    np.save('data/TrainingIndices_{0}p.npy'.format(prong), TrainingIndices)
+    np.save('data/ValidationIndices_{0}p.npy'.format(prong), ValIndices)
+    np.save('data/TestIndices_{0}p.npy'.format(prong), TestIndices)
 else:
-    TrainingIndices = np.load('data/TrainingIndices_SmallMassRange.npy')
-    ValIndices = np.load('data/ValidationIndices_SmallMassRange.npy')
-    TestIndices = np.load('data/TestIndices_SmallMassRange.npy')
+    TrainingIndices = np.load('data/TrainingIndices_{0}p.npy'.format(prong))
+    ValIndices = np.load('data/ValidationIndices_{0}p.npy'.format(prong))
+    TestIndices = np.load('data/TestIndices_{0}p.npy'.format(prong))
 
 X_train, y_train = CombinedData[TrainingIndices], CombinedLabels[TrainingIndices]
 X_test, y_test = CombinedData[TestIndices], CombinedLabels[TestIndices]
@@ -203,7 +198,7 @@ ClassifierModel = Model(inputs=inputs, outputs=Classifier)
 # Train the Classifier
 # No adversary, just do as good as possible
 # ***************************************************
-if not os.path.isfile('Models/OriginalClassifer_SmallMassRange.h5'):
+if not os.path.isfile('Models/OriginalClassifer_{0}p.h5'.format(prong)):
     ClassifierModel.compile(optimizer='adam', loss='binary_crossentropy')
     ClassifierModel.summary()
     ClassifierModel.fit(X_trainscaled,
@@ -298,11 +293,12 @@ if not os.path.isfile('Models/OriginalClassifer_SmallMassRange.h5'):
 
     plt.suptitle('No Adversary', y=1.02)
     plt.tight_layout(w_pad=2)
-    plt.savefig('Plots/InitialNetworkNoAdversary.pdf', bbox_inches='tight')
+    plt.savefig('Plots/InitialNetworkNoAdversary_{0}p.pdf'.format(prong),
+                bbox_inches='tight')
 
-    ClassifierModel.save('Models/OriginalClassifer_SmallMassRange.h5')
+    ClassifierModel.save('Models/OriginalClassifer_{0}p.h5'.format(prong))
 else:
-    ClassifierModel = load_model('Models/OriginalClassifer_SmallMassRange.h5')
+    ClassifierModel = load_model('Models/OriginalClassifer_{0}p.h5'.format(prong))
 
 # ***************************************************
 # Add in the Adversary
@@ -344,7 +340,7 @@ AdversaryModel.compile(loss=AdvLoss,
 # ***************************************************
 # Let the adversary learn for a while
 # ***************************************************
-if not os.path.isfile('Models/OriginalAdversaryTanhAdam_SmallMassRange.h5'):
+if not os.path.isfile('Models/OriginalAdversaryTanhAdam_{0}p.h5'.format(prong)):
     ClassifierModel.trainable = False
     AdversaryModel.compile(loss=AdvLoss,
                            optimizer=Adam()
@@ -367,15 +363,15 @@ if not os.path.isfile('Models/OriginalAdversaryTanhAdam_SmallMassRange.h5'):
                )
     plt.xlabel('Mass (scaled)')
     plt.ylabel('Predicted')
-    plt.savefig('Plots/InitialAdversaryOnValidation_SmallMassRange.pdf',
+    plt.savefig('Plots/InitialAdversaryOnValidation_{0}p.pdf'.format(prong),
                 bbox_inches='tight'
                 )
     plt.close()
     plt.clf()
 
-    AdversaryModel.save_weights('Models/OriginalAdversaryTanhAdam_SmallMassRange.h5')
+    AdversaryModel.save_weights('Models/OriginalAdversaryTanhAdam_{0}p.h5'.format(prong))
 else:
-    AdversaryModel.load_weights('Models/OriginalAdversaryTanhAdam_SmallMassRange.h5')
+    AdversaryModel.load_weights('Models/OriginalAdversaryTanhAdam_{0}p.h5'.format(prong))
 
 # ***************************************************
 # Now put the two models together into one model
@@ -390,8 +386,8 @@ losses = {"L_C": [], "L_A": [], "L_C - L_A": []}
 
 
 def plot_losses(i, losses):
-    if not os.path.isdir('Plots/Lambda_{0}_SmallMassRange/'.format(lam)):
-        os.mkdir('Plots/Lambda_{0}_SmallMassRange'.format(lam))
+    if not os.path.isdir('Plots/Lambda_{0}_{1}p/'.format(lam, prong)):
+        os.mkdir('Plots/Lambda_{0}_{1}p'.format(lam, prong))
     ax1 = plt.subplot(311)
     values = np.array(losses["L_C"])
     plt.plot(range(len(values)), values, label=r"$L_C$", color="blue")
@@ -408,7 +404,7 @@ def plot_losses(i, losses):
     plt.legend(loc="upper right")
 
     plt.tight_layout()
-    plt.savefig('Plots/Lambda_{0}_SmallMassRange/TrainingWithLambda_{0}_SmallMassRange.pdf'.format(lam),
+    plt.savefig('Plots/Lambda_{0}_{1}p/TrainingWithLambda_{0}_{1}p.pdf'.format(lam, prong),
                 bbox_inches='tight')
     plt.close()
     plt.clf()
@@ -422,7 +418,7 @@ def plot_losses(i, losses):
                )
     plt.xlabel('Mass (scaled)')
     plt.ylabel('Predicted')
-    plt.savefig('Plots/Lambda_{0}_SmallMassRange/Adversary_lambda_{0}_step_{1:03d}_SmallMassRange.png'.format(lam, i),
+    plt.savefig('Plots/Lambda_{0}_{2}p/Adversary_lambda_{0}_step_{1:03d}_{2}p.png'.format(lam, i, prong),
                 bbox_inches='tight'
                 )
     plt.close()
@@ -442,8 +438,8 @@ CombinedModel.compile(loss=['binary_crossentropy',
                             CombinedLoss],
                       optimizer=ClassOpt
                       )
-if not os.path.isdir('Models/lam_{0}_SmallMassRange/'.format(lam)):
-    os.mkdir('Models/lam_{0}_SmallMassRange'.format(lam))
+if not os.path.isdir('Models/lam_{0}_{1}p/'.format(lam, prong)):
+    os.mkdir('Models/lam_{0}_{1}p'.format(lam, prong))
 
 for i in range(500):
     m_losses = CombinedModel.evaluate([X_valscaled, y_val],
@@ -480,8 +476,8 @@ for i in range(500):
     # #
     if i % 5 == 0:
         plot_losses(i, losses)
-        AdversaryModel.save_weights('Models/lam_{0}_SmallMassRange/Adv_lam_{0}_{1}_weigths_SmallMassRange.h5'.format(lam, i))
-        ClassifierModel.save_weights('Models/lam_{0}_SmallMassRange/Class_lam_{0}_{1}_weights_SmallMassRange.h5'.format(lam, i))
+        AdversaryModel.save_weights('Models/lam_{0}_{2}p/Adv_lam_{0}_{1}_weigths_{2}p.h5'.format(lam, i, prong))
+        ClassifierModel.save_weights('Models/lam_{0}_{2}p/Class_lam_{0}_{1}_weights_{2}p.h5'.format(lam, i, prong))
 
     indices = np.random.permutation(len(X_trainscaled))
 
@@ -607,12 +603,12 @@ plt.ylabel('Events per bin')
 
 plt.suptitle('Adversary $\lambda=$' + str(lam), y=1.02)
 plt.tight_layout(w_pad=2)
-plt.savefig('Plots/Lambda_{0}_SmallMassRange/Adversary_lam_{0}_final_SmallMassRange.pdf'.format(lam),
+plt.savefig('Plots/Lambda_{0}_{1}p/Adversary_lam_{0}_final_{1}p.pdf'.format(lam, prong),
             bbox_inches='tight')
 
-AdversaryModel.save_weights('Models/lam_{0}_SmallMassRange/Adv_lam_{0}_final_SmallMassRange.h5'.format(lam))
-ClassifierModel.save('Models/lam_{0}_SmallMassRange/Class_lam_{0}_final_SmallMassRange.h5'.format(lam))
-ClassifierModel.save_weights('Models/lam_{0}_SmallMassRange/Class_lam_{0}_final_weights_SmallMassRange.h5'.format(lam))
+AdversaryModel.save_weights('Models/lam_{0}_{1}p/Adv_lam_{0}_final_{1}p.h5'.format(lam, prong))
+ClassifierModel.save('Models/lam_{0}_{1}p/Class_lam_{0}_final_{1}p.h5'.format(lam, prong))
+ClassifierModel.save_weights('Models/lam_{0}_{1}p/Class_lam_{0}_final_weights_{1}p.h5'.format(lam, prong))
 
 # script = ' ./ffmpeg -framerate 10 -i '
 # script += '/projects/het/bostdiek/Decorellation/Plots/Lambda_{0}/'.format(lam)
